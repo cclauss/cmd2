@@ -289,14 +289,9 @@ class EmptyStatement(Exception):
 
 
 class HistoryItem(str):
-    """Class used to represent an item in the History list.
-
-    Thin wrapper around str class which adds a custom format for printing. It
-    also keeps track of its index in the list as well as a lowercase
-    representation of itself for convenience/efficiency.
-
-    """
+    """Class used to represent an item in the History list"""
     listformat = ' {:>4}  {}\n'
+    ex_listformat = '  Ex:  {}\n'
 
     def __new__(cls, statement: Statement):
         """Create a new instance of HistoryItem
@@ -307,21 +302,23 @@ class HistoryItem(str):
         hi = super().__new__(cls, statement.raw)
         hi.statement = statement
         hi.idx = None
-        hi.lowercase = utils.norm_fold(hi)
         return hi
+
+    @property
+    def expanded(self) -> str:
+        """Return the command as run which includes shortcuts and aliases resolved plus any changes made in hooks"""
+        return self.statement.expanded_command_line
 
     def pr(self, verbose: bool) -> str:
         """Represent a HistoryItem in a pretty fashion suitable for printing.
 
         :return: pretty print string version of a HistoryItem
         """
-        if verbose:
-            # expanded_cmd = self.statement.command_and_args + self.statement.
-            # if self != self.statement.command_and_args:
-            #     return self.listformat.format(self.idx, self.statement.command_and_args.rstrip())
-            return self.listformat.format(self.idx, str(self.statement.expanded_command_line).rstrip())
+        ret_str = self.listformat.format(self.idx, str(self).rstrip())
+        if verbose and self != self.expanded:
+            ret_str += self.ex_listformat.format(self.expanded.rstrip())
 
-        return self.listformat.format(self.idx, str(self).rstrip())
+        return ret_str
 
 
 class Cmd(cmd.Cmd):
@@ -3177,15 +3174,15 @@ class Cmd(cmd.Cmd):
     history_parser_group.add_argument('-o', '--output-file', metavar='FILE', help='output commands to a script file')
     history_parser_group.add_argument('-t', '--transcript', help='output commands and results to a transcript file')
     history_parser_group.add_argument('-v', '--verbose', action='store_true',
-                                      help='display history and include resolved commands if they'
+                                      help='display history and include expanded commands if they'
                                            ' differ from the typed command.')
     history_parser_group.add_argument('-c', '--clear', action="store_true", help='clear all history')
-    _history_arg_help = """empty               all history items
-a                   one history item by number
-a..b, a:b, a:, ..b  items by indices (inclusive)
-[string]            items containing string
-/regex/             items matching regular expression"""
-    history_parser.add_argument('arg', nargs='?', help=_history_arg_help)
+    history_arg_help = ("empty               all history items\n"
+                        "a                   one history item by number\n"
+                        "a..b, a:b, a:, ..b  items by indices (inclusive)\n"
+                        "string              items containing string\n"
+                        "/regex/             items matching regular expression")
+    history_parser.add_argument('arg', nargs='?', help=history_arg_help)
 
     @with_argparser(history_parser)
     def do_history(self, args: argparse.Namespace) -> None:
@@ -3872,7 +3869,6 @@ class History(list):
                     end = int(end)
                 return self[start:end]
 
-            # noinspection PyUnresolvedReferences
             getme = getme.strip()
 
             if getme.startswith(r'/') and getme.endswith(r'/'):
@@ -3892,7 +3888,7 @@ class History(list):
                     :param hi: HistoryItem
                     :return: bool - True if search matches
                     """
-                    return utils.norm_fold(getme) in hi.lowercase
+                    return utils.norm_fold(getme) in utils.norm_fold(hi)
             return [itm for itm in self if isin(itm)]
 
 

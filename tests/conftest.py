@@ -59,7 +59,7 @@ positional arguments:
   arg                   empty               all history items
                         a                   one history item by number
                         a..b, a:b, a:, ..b  items by indices (inclusive)
-                        [string]            items containing string
+                        string              items containing string
                         /regex/             items matching regular expression
 
 optional arguments:
@@ -71,7 +71,7 @@ optional arguments:
                         output commands to a script file
   -t, --transcript TRANSCRIPT
                         output commands and results to a transcript file
-  -v, --verbose         display history and include resolved commands if they differ from the typed command.
+  -v, --verbose         display history and include expanded commands if they differ from the typed command.
   -c, --clear           clear all history
 """
 
