@@ -296,19 +296,32 @@ class HistoryItem(str):
     representation of itself for convenience/efficiency.
 
     """
-    listformat = '-------------------------[{}]\n{}\n'
+    listformat = ' {:>4}  {}\n'
 
-    # noinspection PyUnusedLocal
-    def __init__(self, instr: str) -> None:
-        str.__init__(self)
-        self.lowercase = self.lower()
-        self.idx = None
+    def __new__(cls, statement: Statement):
+        """Create a new instance of HistoryItem
 
-    def pr(self) -> str:
+        We must override __new__ because we are subclassing `str` which is
+        immutable and takes a different number of arguments as Statement.
+        """
+        import copy
+        hi = super().__new__(cls, statement.raw)
+        hi.statement = statement
+        hi.idx = None
+        hi.lowercase = utils.norm_fold(hi)
+        return hi
+
+    def pr(self, verbose: bool) -> str:
         """Represent a HistoryItem in a pretty fashion suitable for printing.
 
         :return: pretty print string version of a HistoryItem
         """
+        if verbose:
+            # expanded_cmd = self.statement.command_and_args + self.statement.
+            # if self != self.statement.command_and_args:
+            #     return self.listformat.format(self.idx, self.statement.command_and_args.rstrip())
+            return self.listformat.format(self.idx, str(self.statement.expanded_command_line).rstrip())
+
         return self.listformat.format(self.idx, str(self).rstrip())
 
 
@@ -633,7 +646,7 @@ class Cmd(cmd.Cmd):
         err_msg = err_color + err_msg + Fore.RESET
         self.decolorized_write(sys.stderr, err_msg)
 
-        if traceback_war:
+        if traceback_war and not self.debug:
             war = "To enable full traceback, run the following command:  'set debug true'\n"
             war = war_color + war + Fore.RESET
             self.decolorized_write(sys.stderr, war)
@@ -1999,17 +2012,28 @@ class Cmd(cmd.Cmd):
         if statement.command in self.macros:
             stop = self._run_macro(statement)
         else:
-            func = self.cmd_func(statement.command)
-            if func:
-                # Since we have a valid command store it in the history
-                if statement.command not in self.exclude_from_history:
-                    self.history.append(statement.raw)
+            command = statement.command
+            func = self.cmd_func(command)
+            func_arg = statement.args
 
-                stop = func(statement)
+            if not func and self.default_to_shell:
+                command = 'shell'
+                func = self.cmd_func(command)
+                func_arg = statement.command_and_args
+
+            if func:
+                # Check if this command should be stored in the history
+                if command not in self.exclude_from_history:
+                    self.history.append(statement)
+
+                stop = func(func_arg)
 
             else:
                 self.default(statement)
                 stop = False
+
+        if stop is None:
+            stop = False
 
         return stop
 
@@ -2062,14 +2086,8 @@ class Cmd(cmd.Cmd):
 
         :param statement: Statement object with parsed input
         """
-        if self.default_to_shell:
-            result = os.system(statement.command_and_args)
-            # If os.system() succeeded, then don't print warning about unknown command
-            if not result:
-                return
-
         # Print out a message stating this is an unknown command
-        self.poutput('*** Unknown syntax: {}\n'.format(statement.command_and_args))
+        self.poutput('*** {} is not a recognized command, alias, or macro\n'.format(statement.command))
 
     def pseudo_raw_input(self, prompt: str) -> str:
         """Began life as a copy of cmd's cmdloop; like raw_input but
@@ -2804,7 +2822,7 @@ class Cmd(cmd.Cmd):
         :param args: argparse parsed arguments from the set command
         :param parameter: optional search parameter
         """
-        param = parameter.strip().lower()
+        param = utils.norm_fold(parameter.strip())
         result = {}
         maxlen = 0
 
@@ -2845,7 +2863,7 @@ class Cmd(cmd.Cmd):
         # Check if param was passed in
         if not args.param:
             return self.show(args)
-        param = args.param.strip().lower()
+        param = utils.norm_fold(args.param.strip())
 
         # Check if value was passed in
         if not args.value:
@@ -3159,6 +3177,9 @@ class Cmd(cmd.Cmd):
     history_parser_group.add_argument('-s', '--script', action='store_true', help='output commands in script format')
     history_parser_group.add_argument('-o', '--output-file', metavar='FILE', help='output commands to a script file')
     history_parser_group.add_argument('-t', '--transcript', help='output commands and results to a transcript file')
+    history_parser_group.add_argument('-v', '--verbose', action='store_true',
+                                      help='display history and include resolved commands if they'
+                                           ' differ from the typed command.')
     history_parser_group.add_argument('-c', '--clear', action="store_true", help='clear all history')
     _history_arg_help = """empty               all history items
 a                   one history item by number
@@ -3242,7 +3263,7 @@ a..b, a:b, a:, ..b  items by indices (inclusive)
                 if args.script:
                     self.poutput(hi)
                 else:
-                    self.poutput(hi.pr())
+                    self.poutput(hi.pr(args.verbose))
 
     def _generate_transcript(self, history: List[HistoryItem], transcript_file: str) -> None:
         """Generate a transcript file from a given history of commands."""
@@ -3816,7 +3837,7 @@ class History(list):
 
     rangePattern = re.compile(r'^\s*(?P<start>[\d]+)?\s*-\s*(?P<end>[\d]+)?\s*$')
 
-    def append(self, new: str) -> None:
+    def append(self, new: Statement) -> None:
         """Append a HistoryItem to end of the History list
 
         :param new: command line to convert to HistoryItem and add to the end of the History list
@@ -3872,7 +3893,7 @@ class History(list):
                     :param hi: HistoryItem
                     :return: bool - True if search matches
                     """
-                    return getme.lower() in hi.lowercase
+                    return utils.norm_fold(getme) in hi.lowercase
             return [itm for itm in self if isin(itm)]
 
 

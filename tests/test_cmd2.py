@@ -298,13 +298,17 @@ def test_pyscript_requires_an_argument(base_app, capsys):
 
 def test_base_error(base_app):
     out = run_cmd(base_app, 'meow')
-    assert out == ["*** Unknown syntax: meow"]
+    assert "is not a recognized command" in out[0]
 
 
 @pytest.fixture
 def hist():
+    from cmd2.parsing import Statement
     from cmd2.cmd2 import History, HistoryItem
-    h = History([HistoryItem('first'), HistoryItem('second'), HistoryItem('third'), HistoryItem('fourth')])
+    h = History([HistoryItem(Statement('', raw='first')),
+                 HistoryItem(Statement('', raw='second')),
+                 HistoryItem(Statement('', raw='third')),
+                 HistoryItem(Statement('', raw='fourth'))])
     return h
 
 def test_history_span(hist):
@@ -334,24 +338,20 @@ def test_base_history(base_app):
     run_cmd(base_app, 'shortcuts')
     out = run_cmd(base_app, 'history')
     expected = normalize("""
--------------------------[1]
-help
--------------------------[2]
-shortcuts
+    1  help
+    2  shortcuts
 """)
     assert out == expected
 
     out = run_cmd(base_app, 'history he')
     expected = normalize("""
--------------------------[1]
-help
+    1  help
 """)
     assert out == expected
 
     out = run_cmd(base_app, 'history sh')
     expected = normalize("""
--------------------------[2]
-shortcuts
+    2  shortcuts
 """)
     assert out == expected
 
@@ -371,10 +371,8 @@ def test_history_with_string_argument(base_app):
     run_cmd(base_app, 'help history')
     out = run_cmd(base_app, 'history help')
     expected = normalize("""
--------------------------[1]
-help
--------------------------[3]
-help history
+    1  help
+    3  help history
 """)
     assert out == expected
 
@@ -384,8 +382,7 @@ def test_history_with_integer_argument(base_app):
     run_cmd(base_app, 'shortcuts')
     out = run_cmd(base_app, 'history 1')
     expected = normalize("""
--------------------------[1]
-help
+    1  help
 """)
     assert out == expected
 
@@ -396,10 +393,8 @@ def test_history_with_integer_span(base_app):
     run_cmd(base_app, 'help history')
     out = run_cmd(base_app, 'history 1..2')
     expected = normalize("""
--------------------------[1]
-help
--------------------------[2]
-shortcuts
+    1  help
+    2  shortcuts
 """)
     assert out == expected
 
@@ -409,10 +404,8 @@ def test_history_with_span_start(base_app):
     run_cmd(base_app, 'help history')
     out = run_cmd(base_app, 'history 2:')
     expected = normalize("""
--------------------------[2]
-shortcuts
--------------------------[3]
-help history
+    2  shortcuts
+    3  help history
 """)
     assert out == expected
 
@@ -422,10 +415,8 @@ def test_history_with_span_end(base_app):
     run_cmd(base_app, 'help history')
     out = run_cmd(base_app, 'history :2')
     expected = normalize("""
--------------------------[1]
-help
--------------------------[2]
-shortcuts
+    1  help
+    2  shortcuts
 """)
     assert out == expected
 
@@ -435,8 +426,7 @@ def test_history_with_span_index_error(base_app):
     run_cmd(base_app, '!ls -hal :')
     out = run_cmd(base_app, 'history "hal :"')
     expected = normalize("""
--------------------------[3]
-!ls -hal :
+    3  !ls -hal :
 """)
     assert out == expected
 
@@ -957,8 +947,7 @@ def test_exclude_from_history(base_app, monkeypatch):
     run_cmd(base_app, 'help')
     # And verify we have a history now ...
     out = run_cmd(base_app, 'history')
-    expected = normalize("""-------------------------[1]
-help""")
+    expected = normalize("""    1  help""")
     assert out == expected
 
 
@@ -1042,12 +1031,12 @@ def hook_failure():
 
 def test_precmd_hook_success(base_app):
     out = base_app.onecmd_plus_hooks('help')
-    assert out is None
+    assert out is False
 
 
 def test_precmd_hook_failure(hook_failure):
     out = hook_failure.onecmd_plus_hooks('help')
-    assert out == True
+    assert out is True
 
 
 class SayApp(cmd2.Cmd):
@@ -1098,40 +1087,18 @@ class ShellApp(cmd2.Cmd):
         super().__init__(*args, **kwargs)
         self.default_to_shell = True
 
-@pytest.fixture
-def shell_app():
-    app = ShellApp()
-    app.stdout = utils.StdSim(app.stdout)
-    return app
-
-def test_default_to_shell_unknown(shell_app):
-    unknown_command = 'zyxcw23'
-    out = run_cmd(shell_app, unknown_command)
-    assert out == ["*** Unknown syntax: {}".format(unknown_command)]
-
-def test_default_to_shell_good(capsys):
-    app = cmd2.Cmd()
-    app.default_to_shell = True
+def test_default_to_shell(base_app, monkeypatch):
     if sys.platform.startswith('win'):
         line = 'dir'
     else:
         line = 'ls'
-    statement = app.statement_parser.parse(line)
-    retval = app.default(statement)
-    assert not retval
-    out, err = capsys.readouterr()
-    assert out == ''
 
-def test_default_to_shell_failure(capsys):
-    app = cmd2.Cmd()
-    app.default_to_shell = True
-    line = 'ls does_not_exist.xyz'
-    statement = app.statement_parser.parse(line)
-    retval = app.default(statement)
-    assert not retval
-    out, err = capsys.readouterr()
-    assert out == "*** Unknown syntax: {}\n".format(line)
-
+    base_app.default_to_shell = True
+    m = mock.Mock()
+    monkeypatch.setattr("{}.Popen".format('subprocess'), m)
+    out = run_cmd(base_app, line)
+    assert out == []
+    assert m.called
 
 def test_ansi_prompt_not_esacped(base_app):
     from cmd2.rl_utils import rl_make_safe_prompt
