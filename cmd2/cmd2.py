@@ -304,7 +304,6 @@ class HistoryItem(str):
         We must override __new__ because we are subclassing `str` which is
         immutable and takes a different number of arguments as Statement.
         """
-        import copy
         hi = super().__new__(cls, statement.raw)
         hi.statement = statement
         hi.idx = None
