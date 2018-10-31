@@ -1911,8 +1911,8 @@ class Cmd(cmd.Cmd):
                 self.kept_state = None
                 self.redirecting = False
 
-                # Re-raise the exception
-                raise ex
+                self.perror('Not piping because - {}'.format(ex), traceback_war=False)
+
         elif statement.output:
             import tempfile
             if (not statement.output_to) and (not self.can_clip):
@@ -1930,7 +1930,7 @@ class Cmd(cmd.Cmd):
                 try:
                     sys.stdout = self.stdout = open(statement.output_to, mode)
                 except OSError as ex:
-                    self.perror('Not Redirecting because - {}'.format(ex), traceback_war=False)
+                    self.perror('Not redirecting because - {}'.format(ex), traceback_war=False)
                     self.redirecting = False
             else:
                 # going to a paste buffer
