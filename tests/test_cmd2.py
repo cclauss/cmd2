@@ -793,8 +793,7 @@ def test_pipe_to_shell_error(base_app, capsys):
     run_cmd(base_app, 'help | foobarbaz.this_does_not_exist')
     out, err = capsys.readouterr()
     assert not out
-    expected_error = 'FileNotFoundError'
-    assert err.startswith("EXCEPTION of type '{}' occurred with message:".format(expected_error))
+    assert err.startswith("ERROR: Not piping because")
 
 
 @pytest.mark.skipif(not clipboard.can_clip,
